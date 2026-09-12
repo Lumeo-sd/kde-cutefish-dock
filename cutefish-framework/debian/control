@@ -1,0 +1,28 @@
+Source: libcutefish
+Section: devel
+Priority: optional
+Maintainer: CutefishOS <support@cutefishos.com>
+Build-Depends: cmake,
+               debhelper (>= 9),
+               extra-cmake-modules,
+               libkscreen-dev,
+               libkf6networkmanagerqt-dev,
+               libkf6bluezqt-dev,
+               libkf6modemmanagerqt-dev,
+               libcanberra-dev,
+               libpulse-dev,
+               sound-theme-freedesktop,
+               qt6-base-dev,
+               qt6-declarative-dev,
+               qt6-tools-dev,
+               qt6-tools-dev-tools,
+               pkg-config
+Standards-Version: 4.5.0
+Homepage: https://cutefishos.com
+
+Package: libcutefish
+Architecture: any
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+         libkscreen-bin
+Description: CutefishOS Library
