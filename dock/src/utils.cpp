@@ -205,7 +205,28 @@ QMap<QString, QString> Utils::readInfoFromDesktop(const QString &desktopFile)
             info.insert("Icon", item->iconName);
             info.insert("Name", item->name);
             info.insert("Exec", item->exec);
+            return info;
         }
+    }
+
+    // The requested path may differ from the monitor's canonical one (a
+    // kickoff drag URL can point at e.g. a flatpak app-install path while the
+    // monitor knows the XDG export link). Parse the desktop file directly so a
+    // freshly dropped pin still gets its real icon and name.
+    if (!desktopFile.isEmpty() && QFile::exists(desktopFile)) {
+        QSettings desktopSettings(desktopFile, QSettings::IniFormat);
+        desktopSettings.beginGroup("Desktop Entry");
+
+        const QString icon = desktopSettings.value("Icon").toString();
+        const QString name = desktopSettings.value("Name").toString();
+        const QString exec = desktopSettings.value("Exec").toString();
+
+        if (!icon.isEmpty())
+            info.insert("Icon", icon);
+        if (!name.isEmpty())
+            info.insert("Name", name);
+        if (!exec.isEmpty())
+            info.insert("Exec", exec);
     }
 
     return info;
