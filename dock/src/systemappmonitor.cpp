@@ -128,7 +128,10 @@ void SystemAppMonitor::refresh()
             // A desktop file may exist in several XDG directories at once.
             // Keep only the highest-priority copy (the directories are already
             // ordered user-first) so an app never shows up twice.
-            const QString baseName = QFileInfo(filePath).baseName().toLower();
+            // Qt 6: use completeBaseName() to keep the pre-Qt6 baseName()
+            // semantics ("org.kde.dolphin.desktop" dedups as "org.kde.dolphin",
+            // not "org", which would collapse every org.kde.* app into one).
+            const QString baseName = QFileInfo(filePath).completeBaseName().toLower();
             if (seenBaseNames.contains(baseName))
                 continue;
 

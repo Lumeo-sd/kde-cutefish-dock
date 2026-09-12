@@ -111,7 +111,7 @@ void ApplicationModel::addItem(const QString &desktopFile)
     // Why not use exec? Because exec contains the file path,
     // QSettings will have problems, resulting in unrecognized next time.
     QFileInfo fi(desktopFile);
-    item->id = fi.baseName();
+    item->id = fi.completeBaseName();
 
     m_appItems << item;
     endInsertRows();
@@ -183,8 +183,11 @@ void ApplicationModel::raiseWindow(const QString &id)
 {
     ApplicationItem *item = findItemById(id);
 
-    if (!item)
+    if (!item || item->wids.isEmpty())
         return;
+
+    if (item->currentActive < 0 || item->currentActive >= item->wids.size())
+        item->currentActive = 0;
 
     m_iface->forceActiveWindow(item->wids.at(item->currentActive));
 }

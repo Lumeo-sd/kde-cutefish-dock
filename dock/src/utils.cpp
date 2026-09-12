@@ -92,7 +92,9 @@ QString Utils::desktopPathFromMetadata(const QString &appId, quint32 pid, const 
         for (SystemAppItem *item : m_sysAppMonitor->applications()) {
             const QFileInfo desktopFileInfo(item->path);
 
-            if (desktopFileInfo.baseName().compare(appId, Qt::CaseInsensitive) == 0)
+            // Qt 6: completeBaseName() keeps the pre-Qt6 baseName() semantics,
+            // i.e. "org.kde.dolphin" for "org.kde.dolphin.desktop".
+            if (desktopFileInfo.completeBaseName().compare(appId, Qt::CaseInsensitive) == 0)
                 return item->path;
 
             // StartupWMClass=STRING is the canonical Wayland appId hint.
@@ -159,7 +161,7 @@ QString Utils::desktopPathFromMetadata(const QString &appId, quint32 pid, const 
             if (!founded && item->exec.startsWith(xWindowWMClassName, Qt::CaseInsensitive))
                 founded = true;
 
-            if (!founded && desktopFileInfo.baseName().startsWith(xWindowWMClassName, Qt::CaseInsensitive))
+            if (!founded && desktopFileInfo.completeBaseName().startsWith(xWindowWMClassName, Qt::CaseInsensitive))
                 founded = true;
 
             // For exec path.
@@ -184,7 +186,7 @@ QString Utils::desktopPathFromMetadata(const QString &appId, quint32 pid, const 
                 break;
             }
 
-            const QString execBase = QFileInfo(item->exec).baseName();
+            const QString execBase = QFileInfo(item->exec).completeBaseName();
             if (!execBase.isEmpty() && execBase.compare(appId, Qt::CaseInsensitive) == 0) {
                 result = item->path;
                 break;
