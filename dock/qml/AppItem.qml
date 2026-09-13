@@ -27,7 +27,6 @@ DockItem {
 
     property var windowCount: model.windowCount
     property var dragSource: null
-    property string appId: model.appId
 
     iconName: model.dropSlot ? "" : (model.iconName ? model.iconName : "application-x-desktop")
     showIcon: !model.dropSlot
@@ -136,7 +135,6 @@ DockItem {
             onTriggered: appModel.closeAllByAppId(model.appId)
         }
     }
-
 
     function updateGeometry() {
         if (model.fixed)

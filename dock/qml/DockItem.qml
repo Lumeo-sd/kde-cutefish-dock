@@ -65,7 +65,7 @@ Item {
     property bool dragStarted: false
 
     signal positionChanged()
-    signal released(var mouse)
+    signal released()
     signal pressed(var mouse)
     signal pressAndHold(var mouse)
     signal clicked(var mouse)
@@ -156,7 +156,7 @@ Item {
 
         onReleased: {
             drag.target = null
-            control.released(mouse)
+            control.released()
         }
 
         onContainsMouseChanged: {

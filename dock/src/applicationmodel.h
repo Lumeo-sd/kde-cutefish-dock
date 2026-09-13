@@ -67,39 +67,8 @@ public:
     // the dock window must shrink after a drop that did not consume the slot).
     Q_INVOKABLE bool dropSlotActive() const;
 
-    // Internal reorder: dragging an already-pinned icon. The dragged icon stays
-    // in the model (its icon is hidden by the delegate), so its empty row is
-    // the live gap; moveInternalGap() slides that row along the cursor exactly
-    // like the external drop slot. On drop endInternalDrag() persists the new
-    // order; if the drag leaves the dock restoreInternalDrag() puts the icon
-    // back where it was picked up.
-    Q_INVOKABLE void beginInternalDrag(const QString &id);
-    Q_INVOKABLE void moveInternalGap(int index);
-    Q_INVOKABLE void endInternalDrag();
-    Q_INVOKABLE void restoreInternalDrag();
-    // Icon name of the app currently being reordered, for the "Unpin" hint the
-    // dock shows while the drag is held outside (Wayland drag icons cannot be
-    // updated mid-drag, so the hint cannot travel with the cursor).
-    Q_INVOKABLE QString internalDragIconName();
-
-    // Renders the app's icon to a clean PNG and returns a local file URL to be
-    // used as Drag.imageSource. Wayland captures the drag image when the drag
-    // starts and never updates it, so the URL must be set long before any
-    // press (see AppItem's binding) — Qt's drag manager loads the image the
-    // moment the URL is written and only attaches it to the drag if the load
-    // already finished. The rendered icon (not a delegate snapshot) avoids the
-    // frame / silhouette artefacts of a grabbed rectangle, and rendering at
-    // the dock's icon size keeps the ghost the same size as the dock icon.
-    // \a size is the requested icon size in device pixels.
-    Q_INVOKABLE QString dragIconSource(const QString &appId, int size);
-
     // Insert a pinned app at a specific row (instead of appending it).
     Q_INVOKABLE void insertItem(const QString &desktopFile, int index);
-
-    // QML debug bridge: console.log is not reliably visible on Wayland
-    // (stdout is redirected to a file by the deploy script), so QML traces are
-    // routed through here and land in journald via qInfo, like the C++ traces.
-    Q_INVOKABLE void dbg(const QString &msg);
 
     Q_INVOKABLE void clicked(const QString &id);
     Q_INVOKABLE void raiseWindow(const QString &id);
@@ -142,10 +111,6 @@ private:
     XWindowInterface *m_iface;
     SystemAppMonitor *m_sysAppMonitor;
     QList<ApplicationItem *> m_appItems;
-
-    // State for an in-flight internal reorder drag.
-    QString m_dragItemId;
-    int m_dragFrom = -1;
 };
 
 #endif // APPLICATIONMODEL_H

@@ -233,60 +233,18 @@ void MainWindow::updateSize()
     resizeWindow();
 }
 
-namespace {
-// While an internal reorder drag is active the layer surface covers the whole
-// screen beyond the anchored strip ("drag band"): the in-window drag ghost and
-// the "Unpin" hint follow the cursor anywhere, not just a fixed distance. The
-// band edge co-ordinate touching the screen edge stays put (the strip is
-// anchored there) — the band grows AWAY from it to the opposite screen edge.
-// The strip side width/height is unchanged, so the anchored strip keeps its
-// exact position and the window never re-centers mid-drag.
-QRect dragBandedRect(int direction, const QRect &screenGeom, const QRect &base)
-{
-    QRect rect = base;
-    switch (direction) {
-    case DockSettings::Bottom:
-        // Full width (the strip stays QML-centered) + up to the top edge.
-        rect.setLeft(screenGeom.left());
-        rect.setRight(screenGeom.right());
-        rect.setTop(screenGeom.top());
-        break;
-    case DockSettings::Left:
-        rect.setTop(screenGeom.top());
-        rect.setBottom(screenGeom.bottom());
-        rect.setRight(screenGeom.right());
-        break;
-    case DockSettings::Right:
-        rect.setTop(screenGeom.top());
-        rect.setBottom(screenGeom.bottom());
-        rect.setLeft(screenGeom.left());
-        break;
-    default:
-        break;
-    }
-    return rect;
-}
-}
-
 void MainWindow::resizeToContent(int cellOffset)
 {
-    // While the band is armed the surface is full-screen-sized and the visible
-    // "collapse" (the dragged row shrinks to nothing) happens on the QML side;
-    // the window itself must not change size during the drag or the anchored
-    // center would re-shift and the whole dock would jump sideways.
-    QRect end;
-    if (m_dragBand && !m_dockHidden)
-        end = dragBandedRect(m_settings->direction(), screen()->geometry(), windowRect());
-    else
-        end = m_dockHidden ? stripRect() : windowRect(cellOffset);
+    // The surface is whatever the current state needs: the full panel, or the
+    // thin edge strip while auto-hidden. The drop-slot flow grows/shrinks the
+    // panel by one cell through cellOffset.
+    QRect end = m_dockHidden ? stripRect() : windowRect(cellOffset);
 
     qInfo() << "resizeToContent offset=" << cellOffset
-            << "band=" << m_dragBand
             << "dir=" << m_settings->direction()
             << "style=" << m_settings->style()
             << "screen=" << screen()->geometry()
             << "rows=" << m_appModel->rowCount()
-            << "bandSize=" << m_dragBandSize
             << "winRect=" << windowRect(cellOffset)
             << "end=" << end
             << "geom=" << geometry();
@@ -294,53 +252,6 @@ void MainWindow::resizeToContent(int cellOffset)
     m_resizeAnimation->setStartValue(geometry());
     m_resizeAnimation->setEndValue(end);
     m_resizeAnimation->start();
-}
-
-void MainWindow::setDragBand(bool on)
-{
-    if (m_dragBand == on)
-        return;
-
-    m_dragBand = on;
-    if (!on)
-        m_dragBandSize = 0;
-
-    if (on) {
-        // A held button on the panel must never let the auto-hide timers
-        // collapse the dock mid-drag.
-        m_hideBlocked = true;
-        m_hideTimer->stop();
-        if (m_dockHidden)
-            setDockHidden(false);
-    }
-
-    // The band toggle is not animated: the band itself is fully transparent,
-    // so a snap has no visual cost (and the strip geometry is adjusted by the
-    // matching QML bandWidth/bandHeight, keeping the dock visuals exactly the
-    // same size and always pinned to the anchored edge).
-    QRect rect = m_dockHidden ? stripRect() : windowRect();
-    if (m_dragBand && !m_dockHidden) {
-        rect = dragBandedRect(m_settings->direction(), screen()->geometry(), rect);
-
-        // Report the band thickness so the QML bandWidth/bandHeight match the
-        // real surface (the strip is subtracted from the banded size).
-        if (m_settings->direction() == DockSettings::Bottom)
-            m_dragBandSize = rect.height() - windowRect().height();
-        else
-            m_dragBandSize = rect.width() - windowRect().width();
-    }
-
-    m_resizeAnimation->stop();
-    setGeometry(rect);
-    qInfo() << "setDragBand" << on << "winRect=" << windowRect() << "rect=" << rect
-            << "geom-after=" << geometry()
-            << "screen=" << screen()->geometry()
-            << "rows=" << m_appModel->rowCount()
-            << "bandSize=" << m_dragBandSize;
-    updateLayerShell();
-    XWindowInterface::instance()->setPanelWindow(this);
-    emit resizingFished();
-    emit dragBandSizeChanged();
 }
 
 QRect MainWindow::windowRect(int cellOffset) const
@@ -447,17 +358,9 @@ void MainWindow::resizeWindow()
 {
     // Keep the edge strip while the panel is hidden: a geometry refresh (new
     // app, icon size change, ...) must not re-expand an invisible panel.
-    qInfo() << "resizeWindow() band=" << m_dragBand << "hidden=" << m_dockHidden
+    qInfo() << "resizeWindow() hidden=" << m_dockHidden
             << "cur=" << geometry();
-    QRect end;
-    if (m_dockHidden)
-        end = stripRect();
-    else if (m_dragBand) {
-        // A banded window must keep its band: windowRect() is the un-banded
-        // strip size, so re-apply the band on top (same math as setDragBand).
-        end = dragBandedRect(m_settings->direction(), screen()->geometry(), windowRect());
-    } else
-        end = windowRect();
+    QRect end = m_dockHidden ? stripRect() : windowRect();
 
     // Animate instead of snapping so e.g. an unpin re-centering glides instead
     // of jumping; only the very first geometry (empty) is applied directly.
@@ -539,26 +442,6 @@ void MainWindow::updateLayerShell()
         break;
     }
 
-    // While an internal reorder drag is active the surface spans the whole
-    // screen (both axes): the ghost and the Unpin hint follow the cursor
-    // anywhere outside the strip. The visible strip stays QML-centered inside
-    // the enlarged surface, so its screen position does not move.
-    if (m_dragBand && !m_dockHidden) {
-        switch (m_settings->direction()) {
-        case DockSettings::Left:
-        case DockSettings::Right:
-            anchors.setFlag(LayerShellQt::Window::AnchorTop);
-            anchors.setFlag(LayerShellQt::Window::AnchorBottom);
-            break;
-        case DockSettings::Bottom:
-            anchors.setFlag(LayerShellQt::Window::AnchorLeft);
-            anchors.setFlag(LayerShellQt::Window::AnchorRight);
-            break;
-        default:
-            break;
-        }
-    }
-
     m_layerShell->setAnchors(anchors);
     m_layerShell->setMargins(margins);
 
@@ -600,7 +483,7 @@ void MainWindow::setDockHidden(bool hidden)
         return;
 
     m_dockHidden = hidden;
-    qInfo() << "dock hidden ->" << hidden << "band=" << m_dragBand;
+    qInfo() << "dock hidden ->" << hidden;
 
     if (hidden) {
         // Auto-hide: fade the QML layer out first (opacity is bound to
@@ -715,10 +598,10 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
 {
     switch (e->type()) {
     case QEvent::MouseButtonPress:
-        qInfo() << "evfilter: press hidden=" << m_dockHidden << "band=" << m_dragBand;
+        qInfo() << "evfilter: press hidden=" << m_dockHidden;
         break;
     case QEvent::Enter:
-        qInfo() << "evfilter: enter hidden=" << m_dockHidden << "band=" << m_dragBand;
+        qInfo() << "evfilter: enter hidden=" << m_dockHidden;
         m_hideTimer->stop();
         m_hideBlocked = true;
 
@@ -727,13 +610,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *e)
             m_showTimer->start();
         break;
     case QEvent::Leave:
-        qInfo() << "evfilter: leave hidden=" << m_dockHidden << "band=" << m_dragBand;
-        // While an internal reorder drag holds the button, the dock must not
-        // start collapsing to the edge strip just because the cursor left the
-        // panel — setDragBand(false) on release restores normal behavior.
-        if (m_dragBand)
-            break;
-
+        qInfo() << "evfilter: leave hidden=" << m_dockHidden;
         m_hideBlocked = false;
 
         // The auto-hide timer only applies to the hiding visibilities; the

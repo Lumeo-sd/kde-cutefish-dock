@@ -44,12 +44,6 @@ class MainWindow : public QQuickView
     // Auto-hide modes shrink the panel to a thin edge strip instead of
     // unmapping it; QML fades the visuals out while dockHidden is true.
     Q_PROPERTY(bool dockHidden READ dockHidden WRITE setDockHidden NOTIFY dockHiddenChanged)
-    // While an internal reorder drag is active the layer surface covers the
-    // whole screen area beyond the strip ("drag band"), so the ghost icon and
-    // the Unpin hint can follow the cursor anywhere. This reports the current
-    // band thickness (perpendicular to the strip) so QML can size the visible
-    // strip the same way regardless of the actual band.
-    Q_PROPERTY(int dragBandSize READ dragBandSize NOTIFY dragBandSizeChanged)
 
 public:
     explicit MainWindow(QQuickView *parent = nullptr);
@@ -67,19 +61,7 @@ public:
     // Smoothly resize the (layer-shell) surface to fit the current model row
     // count. Called when a drop slot is inserted (dock grows by one cell so
     // the icons never overflow behind the trash) or removed (dock shrinks).
-    // A negative cellOffset shrinks the surface by one cell so the panel looks
-    // like the dragged app already left (used while an internal reorder drag
-    // is held outside the dock).
     Q_INVOKABLE void resizeToContent(int cellOffset);
-
-    // While an internal reorder drag is active the layer surface is widened by
-    // a transparent "drag band" on the non-edge side, giving the in-window
-    // drag ghost and the "Unpin" hint room to follow the cursor outside the
-    // visible strip. When on, every resizeToContent() keeps the band; turning
-    // it off returns the surface to the plain strip geometry. The auto-hide
-    // timers are also blocked during the drag so the panel cannot vanish while
-    // an icon is being dragged away.
-    Q_INVOKABLE void setDragBand(bool on);
 
     QRect primaryGeometry() const;
     int direction() const;
@@ -87,7 +69,6 @@ public:
     int visibility() const;
     bool dockHidden() const { return m_dockHidden; }
     void setDockHidden(bool hidden);
-    int dragBandSize() const { return m_dragBandSize; }
 
     void setDirection(int direction);
     void setIconSize(int iconSize);
@@ -106,7 +87,6 @@ signals:
     void visibilityChanged();
     void styleChanged();
     void dockHiddenChanged();
-    void dragBandSizeChanged();
 
 private:
     QRect windowRect(int cellOffset = 0) const;
@@ -138,14 +118,6 @@ private:
 
     bool m_hideBlocked;
     bool m_dockHidden;
-    // While an internal reorder drag is active: the layer surface is widened
-    // by the transparent drag band on the non-edge side (resizeToContent()
-    // keeps it when set) and auto-hide is suspended.
-    bool m_dragBand = false;
-    // Current band thickness in Qt pixels (0 when no band is armed). QML binds
-    // its bandHeight/bandWidth to this so the strip math always matches the
-    // real surface.
-    int m_dragBandSize = 0;
 
     QTimer *m_showTimer;
     QTimer *m_hideTimer;

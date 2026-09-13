@@ -30,9 +30,7 @@ Item {
     visible: true
 
     property bool isHorizontal: Settings.direction === DockSettings.Bottom
-    property bool isVerticalLeft: Settings.direction === DockSettings.Left
-    property bool isVerticalRight: Settings.direction === DockSettings.Right
-    property real windowRadius: isHorizontal ? stripRoot.height * 0.3 : stripRoot.width * 0.3
+    property real windowRadius: isHorizontal ? root.height * 0.3 : root.width * 0.3
     property bool compositing: windowHelper.compositing
 
     // True while an external drag (a .desktop file from a launcher) hovers the
@@ -79,245 +77,208 @@ Item {
         return gapCell(pos, appItemView.count)
     }
 
-    // ===================== the visible dock strip =====================
-    // The strip holds the whole dock visuals. No drag band is needed anymore:
-    // the reorder drag is the standard Qt Quick drag and its pixmap is
-    // rendered by the compositor, so the window stays at its natural
-    // (unbanded) size — the strip simply fills it and hugs the icons.
-    Item {
-        id: stripRoot
-        // Horizontal: the platform length = the row cells (+1 trash); the
-        // height = the whole window. Vertical docks mirror that.
-        width: isHorizontal ? Math.min(root.width,
-                                       (appItemView.count + 1) * stripRoot.height)
-                            : root.width
-        height: isHorizontal ? root.height
-                             : Math.min(root.height,
-                                        (appItemView.count + 1) * stripRoot.width)
-        // The strip fills the whole window (no drag band anymore), so it
-        // sits at its natural edge/center placement.
-        x: isVerticalRight ? Math.max(0, root.width - width)
-                           : (isHorizontal ? Math.max(0, (root.width - width) / 2) : 0)
-        y: isHorizontal ? Math.max(0, root.height - height)
-                        : Math.max(0, (root.height - height) / 2)
+    // Pin apps dragged in from a launcher (Kickoff, the Cutefish launcher,
+    // a file manager) by dropping their .desktop file onto the dock.
+    // While the drag hovers, a temporary drop slot is shown at the cursor
+    // position so the existing icons slide apart (leaving a gap) and the
+    // drop can be aimed at exactly the wanted spot. The panel grows by one
+    // cell while the slot is open so nothing slides behind the trash.
+    DropArea {
+        id: rootDropArea
+        anchors.fill: parent
+        enabled: true
 
-        Behavior on width {
-            NumberAnimation {
-                duration: 300
-                easing.type: Easing.InOutQuad
+        onEntered: function(drag) {
+            if (root.externalDragActive)
+                return
+
+            if (drag.urls.length
+                    && drag.urls[0].toString().toLowerCase().endsWith(".desktop")) {
+                root.externalDragActive = true
+                appModel.beginDropSlot(root.gapIndex(isHorizontal ? drag.x : drag.y))
+                mainWindow.resizeToContent(0)
             }
         }
 
-        Behavior on height {
-            NumberAnimation {
-                duration: 300
-                easing.type: Easing.InOutQuad
+        onPositionChanged: function(drag) {
+            if (!root.externalDragActive)
+                return
+
+            if (drag.urls.length
+                    && drag.urls[0].toString().toLowerCase().endsWith(".desktop")) {
+                appModel.moveDropSlot(root.gapIndex(isHorizontal ? drag.x : drag.y))
             }
         }
 
-        // Pin apps dragged in from a launcher (Kickoff, the Cutefish launcher,
-        // a file manager) by dropping their .desktop file onto the dock.
-        // While the drag hovers, a temporary drop slot is shown at the cursor
-        // position so the existing icons slide apart (leaving a gap) and the
-        // drop can be aimed at exactly the wanted spot. The panel grows by one
-        // cell while the slot is open so nothing slides behind the trash.
-        DropArea {
-            id: rootDropArea
-            anchors.fill: parent
-            enabled: true
+        onExited: function(drag) {
+            if (!root.externalDragActive)
+                return
 
-            onEntered: function(drag) {
-                if (root.externalDragActive)
-                    return
+            root.externalDragActive = false
 
-                if (drag.urls.length
-                        && drag.urls[0].toString().toLowerCase().endsWith(".desktop")) {
-                    root.externalDragActive = true
-                    appModel.beginDropSlot(root.gapIndex(isHorizontal ? drag.x : drag.y))
-                    mainWindow.resizeToContent(0)
+            if (appModel.endDropSlot())
+                mainWindow.resizeToContent(0)
+        }
+
+        onDropped: function(drop) {
+            root.externalDragActive = false
+
+            if (drop.hasUrls) {
+                const idx = root.gapIndex(isHorizontal ? drop.x : drop.y)
+                let first = true
+
+                for (let i = 0; i < drop.urls.length; ++i) {
+                    const url = drop.urls[i].toString()
+                    if (!url.toLowerCase().endsWith(".desktop"))
+                        continue
+
+                    if (first) {
+                        mainWindow.addDesktopFileAt(url, idx)
+                        first = false
+                    } else {
+                        mainWindow.addDesktopFile(url)
+                    }
                 }
             }
 
-            onPositionChanged: function(drag) {
-                if (!root.externalDragActive)
-                    return
+            // The drop slot is converted into the pinned app in place, so
+            // endDropSlot() is a no-op and the panel keeps its grown size;
+            // otherwise (none of the dropped URLs was usable) shrink back.
+            if (appModel.endDropSlot())
+                mainWindow.resizeToContent(0)
+        }
+    }
 
-                if (drag.urls.length
-                        && drag.urls[0].toString().toLowerCase().endsWith(".desktop")) {
-                    appModel.moveDropSlot(root.gapIndex(isHorizontal ? drag.x : drag.y))
+    // Background
+    Rectangle {
+        id: _background
+
+        property var borderColor: root.compositing ? FishUI.Theme.darkMode ? Qt.rgba(255, 255, 255, 0.3)
+                                                                           : Qt.rgba(0, 0, 0, 0.2) : FishUI.Theme.darkMode ? Qt.rgba(255, 255, 255, 0.15)
+                                                                                                                         : Qt.rgba(0, 0, 0, 0.15)
+
+        anchors.fill: parent
+        radius: root.compositing && Settings.style === 0 ? windowRadius : 0
+        color: FishUI.Theme.darkMode ? "#666666" : "#E6E6E6"
+        opacity: root.compositing ? FishUI.Theme.darkMode ? 0.5 : 0.5 : 0.9
+        border.width: 1 / FishUI.Units.devicePixelRatio
+        border.pixelAligned: FishUI.Units.devicePixelRatio > 1 ? false : true
+        border.color: borderColor
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 200
+                easing.type: Easing.Linear
+            }
+        }
+    }
+
+    GridLayout {
+        id: mainLayout
+        anchors.fill: parent
+        anchors.topMargin: Settings.style === 1
+                           && (Settings.direction === 0 || Settings.direction === 2)
+                           ? 28 : 0
+        flow: isHorizontal ? Grid.LeftToRight : Grid.TopToBottom
+        columnSpacing: 0
+        rowSpacing: 0
+
+        ListView {
+            id: appItemView
+            orientation: isHorizontal ? Qt.Horizontal : Qt.Vertical
+            snapMode: ListView.SnapToItem
+            interactive: false
+            model: appModel
+            clip: true
+
+            Layout.fillHeight: true
+            Layout.fillWidth: true
+
+            delegate: AppItem {
+                // Fixed full-cell size for every row — the ListView layout
+                // never re-flows during a drag, so the icons only ever
+                // move through moveDisplaced (once per reorder drop).
+                implicitWidth: isHorizontal ? appItemView.height : appItemView.width
+                implicitHeight: isHorizontal ? appItemView.height : appItemView.width
+            }
+
+            moveDisplaced: Transition {
+                NumberAnimation {
+                    properties: "x, y"
+                    duration: 300
+                    easing.type: Easing.InOutQuad
                 }
             }
 
-            onExited: function(drag) {
-                if (!root.externalDragActive)
-                    return
-
-                root.externalDragActive = false
-
-                if (appModel.endDropSlot())
-                    mainWindow.resizeToContent(0)
+            // The drop slot insertion (beginDropSlot) and removal
+            // (endDropSlot) displace the surrounding icons: animate those
+            // too, so the icons slide apart / close smoothly instead of
+            // jumping.
+            addDisplaced: Transition {
+                NumberAnimation {
+                    properties: "x, y"
+                    duration: 300
+                    easing.type: Easing.InOutQuad
+                }
             }
 
-            onDropped: function(drop) {
-                root.externalDragActive = false
+            removeDisplaced: Transition {
+                NumberAnimation {
+                    properties: "x, y"
+                    duration: 300
+                    easing.type: Easing.InOutQuad
+                }
+            }
+        }
 
+        DockItem {
+            id: trashItem
+            // The trash cell is as thick as the dock strip (= one window cell).
+            implicitWidth: isHorizontal ? root.height : root.width
+            implicitHeight: isHorizontal ? root.height : root.width
+            popupText: qsTr("Trash")
+            enableActivateDot: false
+            iconName: trash.count === 0 ? "user-trash-empty" : "user-trash-full"
+            onClicked: trash.openTrash()
+            onRightClicked: trashMenu.popup()
+
+            dropArea.enabled: !root.externalDragActive
+
+            onDropped: {
                 if (drop.hasUrls) {
-                    const idx = root.gapIndex(isHorizontal ? drop.x : drop.y)
-                    let first = true
-
-                    for (let i = 0; i < drop.urls.length; ++i) {
-                        const url = drop.urls[i].toString()
-                        if (!url.toLowerCase().endsWith(".desktop"))
-                            continue
-
-                        if (first) {
-                            mainWindow.addDesktopFileAt(url, idx)
-                            first = false
-                        } else {
-                            mainWindow.addDesktopFile(url)
-                        }
-                    }
-                }
-
-                // The drop slot is converted into the pinned app in place, so
-                // endDropSlot() is a no-op and the panel keeps its grown size;
-                // otherwise (none of the dropped URLs was usable) shrink back.
-                if (appModel.endDropSlot())
-                    mainWindow.resizeToContent(0)
-            }
-        }
-
-        // Background
-        Rectangle {
-            id: _background
-
-            property var borderColor: root.compositing ? FishUI.Theme.darkMode ? Qt.rgba(255, 255, 255, 0.3)
-                                                                               : Qt.rgba(0, 0, 0, 0.2) : FishUI.Theme.darkMode ? Qt.rgba(255, 255, 255, 0.15)
-                                                                                                                             : Qt.rgba(0, 0, 0, 0.15)
-
-            anchors.fill: parent
-            radius: root.compositing && Settings.style === 0 ? windowRadius : 0
-            color: FishUI.Theme.darkMode ? "#666666" : "#E6E6E6"
-            opacity: root.compositing ? FishUI.Theme.darkMode ? 0.5 : 0.5 : 0.9
-            border.width: 1 / FishUI.Units.devicePixelRatio
-            border.pixelAligned: FishUI.Units.devicePixelRatio > 1 ? false : true
-            border.color: borderColor
-
-            Behavior on color {
-                ColorAnimation {
-                    duration: 200
-                    easing.type: Easing.Linear
+                    trash.moveToTrash(drop.urls)
                 }
             }
-        }
 
-        GridLayout {
-            id: mainLayout
-            anchors.fill: parent
-            anchors.topMargin: Settings.style === 1
-                               && (Settings.direction === 0 || Settings.direction === 2)
-                               ? 28 : 0
-            flow: isHorizontal ? Grid.LeftToRight : Grid.TopToBottom
-            columnSpacing: 0
-            rowSpacing: 0
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: FishUI.Units.smallSpacing / 2
+                color: "transparent"
+                border.color: FishUI.Theme.textColor
+                radius: height * 0.3
+                border.width: 1 / FishUI.Units.devicePixelRatio
+                border.pixelAligned: FishUI.Units.devicePixelRatio > 1 ? false : true
+                opacity: trashItem.dropArea.containsDrag ? 0.5 : 0
 
-            ListView {
-                id: appItemView
-                orientation: isHorizontal ? Qt.Horizontal : Qt.Vertical
-                snapMode: ListView.SnapToItem
-                interactive: false
-                model: appModel
-                clip: true
-
-                Layout.fillHeight: true
-                Layout.fillWidth: true
-
-                delegate: AppItem {
-                    // Fixed full-cell size for every row — the ListView layout
-                    // never re-flows during a drag, so the icons only ever
-                    // move through moveDisplaced (once per reorder drop).
-                    implicitWidth: isHorizontal ? appItemView.height : appItemView.width
-                    implicitHeight: isHorizontal ? appItemView.height : appItemView.width
-                }
-
-                moveDisplaced: Transition {
+                Behavior on opacity {
                     NumberAnimation {
-                        properties: "x, y"
-                        duration: 300
-                        easing.type: Easing.InOutQuad
-                    }
-                }
-
-                // The drop slot insertion (beginDropSlot) and removal
-                // (endDropSlot) displace the surrounding icons: animate those
-                // too, so the icons slide apart / close smoothly instead of
-                // jumping.
-                addDisplaced: Transition {
-                    NumberAnimation {
-                        properties: "x, y"
-                        duration: 300
-                        easing.type: Easing.InOutQuad
-                    }
-                }
-
-                removeDisplaced: Transition {
-                    NumberAnimation {
-                        properties: "x, y"
-                        duration: 300
-                        easing.type: Easing.InOutQuad
+                        duration: 200
                     }
                 }
             }
 
-            DockItem {
-                id: trashItem
-                // The trash cell is as thick as the visible strip.
-                implicitWidth: isHorizontal ? stripRoot.height : stripRoot.width
-                implicitHeight: isHorizontal ? stripRoot.height : stripRoot.width
-                popupText: qsTr("Trash")
-                enableActivateDot: false
-                iconName: trash.count === 0 ? "user-trash-empty" : "user-trash-full"
-                onClicked: trash.openTrash()
-                onRightClicked: trashMenu.popup()
+            FishUI.DesktopMenu {
+                id: trashMenu
 
-                dropArea.enabled: !root.externalDragActive
-
-                onDropped: {
-                    if (drop.hasUrls) {
-                        trash.moveToTrash(drop.urls)
-                    }
+                MenuItem {
+                    text: qsTr("Open")
+                    onTriggered: trash.openTrash()
                 }
 
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: FishUI.Units.smallSpacing / 2
-                    color: "transparent"
-                    border.color: FishUI.Theme.textColor
-                    radius: height * 0.3
-                    border.width: 1 / FishUI.Units.devicePixelRatio
-                    border.pixelAligned: FishUI.Units.devicePixelRatio > 1 ? false : true
-                    opacity: trashItem.dropArea.containsDrag ? 0.5 : 0
-
-                    Behavior on opacity {
-                        NumberAnimation {
-                            duration: 200
-                        }
-                    }
-                }
-
-                FishUI.DesktopMenu {
-                    id: trashMenu
-
-                    MenuItem {
-                        text: qsTr("Open")
-                        onTriggered: trash.openTrash()
-                    }
-
-                    MenuItem {
-                        text: qsTr("Empty Trash")
-                        onTriggered: trash.emptyTrash()
-                        visible: trash.count !== 0
-                    }
+                MenuItem {
+                    text: qsTr("Empty Trash")
+                    onTriggered: trash.emptyTrash()
+                    visible: trash.count !== 0
                 }
             }
         }
@@ -329,14 +290,14 @@ Item {
 
     FishUI.WindowShadow {
         view: mainWindow
-        geometry: Qt.rect(stripRoot.x, stripRoot.y, stripRoot.width, stripRoot.height)
+        geometry: Qt.rect(root.x, root.y, root.width, root.height)
         strength: 1
         radius: _background.radius
     }
 
     FishUI.WindowBlur {
         view: mainWindow
-        geometry: Qt.rect(stripRoot.x, stripRoot.y, stripRoot.width, stripRoot.height)
+        geometry: Qt.rect(root.x, root.y, root.width, root.height)
         windowRadius: _background.radius
         enabled: true
     }
