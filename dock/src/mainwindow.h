@@ -55,6 +55,7 @@ public:
 
     // Callable from QML (drag & drop of .desktop files onto the dock).
     Q_INVOKABLE bool addDesktopFile(const QString &desktop);
+    Q_INVOKABLE bool addDesktopFileAt(const QString &desktop, int index);
 
     QRect primaryGeometry() const;
     int direction() const;

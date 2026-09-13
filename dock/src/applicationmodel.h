@@ -38,7 +38,8 @@ public:
         WindowCountRole,
         IsPinnedRole,
         DesktopFileRole,
-        FixedItemRole
+        FixedItemRole,
+        DropSlotRole
     };
 
     explicit ApplicationModel(QObject *parent = nullptr);
@@ -53,6 +54,16 @@ public:
     bool isDesktopPinned(const QString &desktopFile);
 
     Q_INVOKABLE void save() { savePinAndUnPinList(); }
+
+    // Drag & drop positioning: while an external drag (a .desktop file from a
+    // launcher) hovers the dock, a temporary "drop slot" row is inserted so the
+    // existing icons slide apart, showing exactly where the new pin will land.
+    Q_INVOKABLE void beginDropSlot(int index);
+    Q_INVOKABLE void moveDropSlot(int index);
+    Q_INVOKABLE void endDropSlot();
+
+    // Insert a pinned app at a specific row (instead of appending it).
+    Q_INVOKABLE void insertItem(const QString &desktopFile, int index);
 
     Q_INVOKABLE void clicked(const QString &id);
     Q_INVOKABLE void raiseWindow(const QString &id);
@@ -79,6 +90,9 @@ private:
 
     bool contains(const QString &id);
     int indexOf(const QString &id);
+    // Move one ApplicationItem to another row in the list (begin/endMoveRows).
+    void moveItem(ApplicationItem *item, int to);
+    int dropSlotIndex() const;
     void initPinnedApplications();
     void savePinAndUnPinList();
 

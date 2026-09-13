@@ -33,6 +33,11 @@ Item {
     property real windowRadius: isHorizontal ? root.height * 0.3 : root.width * 0.3
     property bool compositing: windowHelper.compositing
 
+    // True while an external drag (a .desktop file from a launcher) hovers the
+    // dock. The app icons' own drop areas are disabled during it, so the root
+    // DropArea below can follow the cursor and show the live insertion gap.
+    property bool externalDragActive: false
+
     // Wayland auto-hide: the panel shrinks to a thin edge strip and the QML
     // layer fades out underneath the mouse cursor.
     opacity: mainWindow.dockHidden ? 0 : 1
@@ -48,23 +53,69 @@ Item {
         mainWindow.updateSize()
     }
 
+    // Convert a drag position (in root coordinates, along the app axis) to a
+    // row index in the ListView. Index 0 is the launcher and is protected.
+    function gapIndex(pos) {
+        const itemSize = isHorizontal ? appItemView.height : appItemView.width
+        if (itemSize <= 0 || appItemView.count === 0)
+            return 1
+        const i = Math.floor(pos / itemSize)
+        return Math.max(1, Math.min(i, appItemView.count))
+    }
+
     DropArea {
+        id: rootDropArea
         anchors.fill: parent
         enabled: true
 
         // Pin apps dragged in from a launcher (Kickoff, the Cutefish launcher,
         // a file manager) by dropping their .desktop file onto the dock.
-        // Drops that land on an existing dock item are handled by that item's
-        // own drop area (internal reordering); everything else comes here.
-        onDropped: function(drop) {
-            if (!drop.hasUrls)
-                return
-
-            for (let i = 0; i < drop.urls.length; ++i) {
-                const url = drop.urls[i]
-                if (url.toString().toLowerCase().endsWith(".desktop"))
-                    mainWindow.addDesktopFile(url.toString())
+        // While the drag hovers, a temporary drop slot is shown at the cursor
+        // position so the existing icons slide apart (leaving a gap) and the
+        // drop can be aimed at exactly the wanted spot.
+        onEntered: function(drag) {
+            if (drag.urls.length
+                    && drag.urls[0].toString().toLowerCase().endsWith(".desktop")) {
+                root.externalDragActive = true
+                appModel.beginDropSlot(root.gapIndex(isHorizontal ? drag.x : drag.y))
             }
+        }
+
+        onPositionChanged: function(drag) {
+            if (root.externalDragActive)
+                appModel.moveDropSlot(root.gapIndex(isHorizontal ? drag.x : drag.y))
+        }
+
+        onExited: function(drag) {
+            if (root.externalDragActive) {
+                root.externalDragActive = false
+                appModel.endDropSlot()
+            }
+        }
+
+        onDropped: function(drop) {
+            root.externalDragActive = false
+
+            if (drop.hasUrls) {
+                const idx = root.gapIndex(isHorizontal ? drop.x : drop.y)
+                let first = true
+
+                for (let i = 0; i < drop.urls.length; ++i) {
+                    const url = drop.urls[i].toString()
+                    if (!url.toLowerCase().endsWith(".desktop"))
+                        continue
+
+                    if (first) {
+                        mainWindow.addDesktopFileAt(url, idx)
+                        first = false
+                    } else {
+                        mainWindow.addDesktopFile(url)
+                    }
+                }
+            }
+
+            // No-op if the drop slot was already replaced by the inserted pin.
+            appModel.endDropSlot()
         }
     }
 
@@ -162,7 +213,7 @@ Item {
             onClicked: trash.openTrash()
             onRightClicked: trashMenu.popup()
 
-            dropArea.enabled: true
+            dropArea.enabled: !root.externalDragActive
 
             onDropped: {
                 if (drop.hasUrls) {

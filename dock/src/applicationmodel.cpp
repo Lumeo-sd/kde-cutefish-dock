@@ -55,6 +55,7 @@ QHash<int, QByteArray> ApplicationModel::roleNames() const
     roles[IsPinnedRole] = "isPinned";
     roles[DesktopFileRole] = "desktopFile";
     roles[FixedItemRole] = "fixed";
+    roles[DropSlotRole] = "dropSlot";
     return roles;
 }
 
@@ -82,6 +83,8 @@ QVariant ApplicationModel::data(const QModelIndex &index, int role) const
         return item->desktopPath;
     case FixedItemRole:
         return item->fixed;
+    case DropSlotRole:
+        return item->dropSlot;
     default:
         return QVariant();
     }
@@ -120,6 +123,146 @@ void ApplicationModel::addItem(const QString &desktopFile)
 
     emit itemAdded();
     emit countChanged();
+}
+
+// Insert a new pinned app at a specific row so drag & drop can place it in the
+// middle instead of always appending at the end.
+void ApplicationModel::insertItem(const QString &desktopFile, int index)
+{
+    ApplicationItem *existsItem = findItemByDesktop(desktopFile);
+
+    if (existsItem) {
+        // Already present (pinned or running) -> just relocate it.
+        existsItem->isPinned = true;
+        moveItem(existsItem, index);
+        handleDataChangedFromItem(existsItem);
+        savePinAndUnPinList();
+        return;
+    }
+
+    // A drop slot is visible where the user releases: reuse that row in place
+    // (no insert/remove pair), so the gap the user aimed at becomes the pin.
+    int slot = dropSlotIndex();
+
+    if (slot != -1) {
+        ApplicationItem *item = m_appItems.at(slot);
+
+        QMap<QString, QString> desktopInfo = Utils::instance()->readInfoFromDesktop(desktopFile);
+        item->iconName = desktopInfo.value("Icon");
+        item->visibleName = desktopInfo.value("Name");
+        item->exec = desktopInfo.value("Exec");
+        item->desktopPath = desktopFile;
+        item->isPinned = true;
+        item->fixed = false;
+        item->dropSlot = false;
+
+        QFileInfo fi(desktopFile);
+        item->id = fi.completeBaseName();
+
+        moveItem(item, index);
+
+        savePinAndUnPinList();
+        emit itemAdded();
+        emit countChanged();
+        return;
+    }
+
+    // Plain insert (e.g. no slot was ever created).
+    int from = qBound(1, index, rowCount());
+    beginInsertRows(QModelIndex(), from, from);
+    ApplicationItem *item = new ApplicationItem;
+    QMap<QString, QString> desktopInfo = Utils::instance()->readInfoFromDesktop(desktopFile);
+    item->iconName = desktopInfo.value("Icon");
+    item->visibleName = desktopInfo.value("Name");
+    item->exec = desktopInfo.value("Exec");
+    item->desktopPath = desktopFile;
+    item->isPinned = true;
+
+    QFileInfo fi(desktopFile);
+    item->id = fi.completeBaseName();
+
+    m_appItems.insert(from, item);
+    endInsertRows();
+
+    savePinAndUnPinList();
+    emit itemAdded();
+    emit countChanged();
+}
+
+// --- Drop slot (live insertion gap while an external drag hovers the dock) ---
+
+void ApplicationModel::beginDropSlot(int index)
+{
+    int slot = dropSlotIndex();
+
+    if (slot != -1) {
+        moveDropSlot(index);
+        return;
+    }
+
+    index = qBound(1, index, rowCount());
+
+    beginInsertRows(QModelIndex(), index, index);
+    ApplicationItem *item = new ApplicationItem;
+    item->id = "__dropslot__";
+    item->dropSlot = true;
+    item->fixed = true;
+    m_appItems.insert(index, item);
+    endInsertRows();
+}
+
+void ApplicationModel::moveDropSlot(int index)
+{
+    int from = dropSlotIndex();
+
+    if (from == -1 || from == index)
+        return;
+
+    index = qBound(1, index, rowCount() - 1);
+
+    moveItem(m_appItems.at(from), index);
+}
+
+void ApplicationModel::endDropSlot()
+{
+    int from = dropSlotIndex();
+
+    if (from == -1)
+        return;
+
+    beginRemoveRows(QModelIndex(), from, from);
+    ApplicationItem *item = m_appItems.takeAt(from);
+    endRemoveRows();
+    delete item;
+}
+
+int ApplicationModel::dropSlotIndex() const
+{
+    for (int i = 0; i < m_appItems.size(); ++i) {
+        if (m_appItems.at(i)->dropSlot)
+            return i;
+    }
+
+    return -1;
+}
+
+void ApplicationModel::moveItem(ApplicationItem *item, int to)
+{
+    int from = m_appItems.indexOf(item);
+
+    if (from == -1 || from == to)
+        return;
+
+    to = qBound(0, to, rowCount() - 1);
+
+    m_appItems.move(from, to);
+
+    if (from < to)
+        beginMoveRows(QModelIndex(), from, from, QModelIndex(), to + 1);
+    else
+        beginMoveRows(QModelIndex(), from, from, QModelIndex(), to);
+
+    endMoveRows();
 }
 
 void ApplicationModel::removeItem(const QString &desktopFile)

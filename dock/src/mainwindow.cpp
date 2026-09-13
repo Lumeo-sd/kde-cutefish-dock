@@ -147,6 +147,19 @@ bool MainWindow::addDesktopFile(const QString &desktop)
     return true;
 }
 
+bool MainWindow::addDesktopFileAt(const QString &desktop, int index)
+{
+    const QString path = desktop.startsWith("file://")
+                             ? QUrl(desktop).toLocalFile()
+                             : desktop;
+
+    if (!path.endsWith(".desktop", Qt::CaseInsensitive) || !QFile::exists(path))
+        return false;
+
+    m_appModel->insertItem(path, index);
+    return true;
+}
+
 void MainWindow::remove(const QString &desktop)
 {
     m_appModel->removeItem(desktop);

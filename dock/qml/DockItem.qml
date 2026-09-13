@@ -40,6 +40,14 @@ Item {
     property alias mouseArea: iconArea
     property alias dropArea: iconDropArea
 
+    // Set to false to hide the icon (e.g. the drop-slot placeholder row).
+    property bool showIcon: true
+
+    // Whether the icon's drop area accepts drops. Disabled entirely during an
+    // external drag so the root DropArea follows the cursor for the gap.
+    property bool dropAreaEnabled: draggable
+    readonly property bool externalDragActive: root.externalDragActive
+
     property bool enableActivateDot: true
     property bool isActive: false
 
@@ -80,7 +88,7 @@ Item {
         height: control.iconSize
         source: iconName
 
-        visible: !dragStarted
+        visible: showIcon && !dragStarted
 
         ColorOverlay {
             id: iconColorize
@@ -94,7 +102,7 @@ Item {
     DropArea {
         id: iconDropArea
         anchors.fill: icon
-        enabled: draggable
+        enabled: dropAreaEnabled && !externalDragActive
         onDropped: control.dropped(drop)
     }
 

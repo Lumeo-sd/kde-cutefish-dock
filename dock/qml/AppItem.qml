@@ -28,12 +28,32 @@ DockItem {
     property var windowCount: model.windowCount
     property var dragSource: null
 
-    iconName: model.iconName ? model.iconName : "application-x-desktop"
+    iconName: model.dropSlot ? "" : (model.iconName ? model.iconName : "application-x-desktop")
+    showIcon: !model.dropSlot
     isActive: model.isActive
-    popupText: model.visibleName
-    enableActivateDot: windowCount !== 0
+    popupText: model.dropSlot ? "" : model.visibleName
+    enableActivateDot: !model.dropSlot && windowCount !== 0
     draggable: !model.fixed
     dragItemIndex: index
+
+    // Live insertion gap: a translucent highlight the size of an icon slot,
+    // shown while an external drag hovers the dock.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: FishUI.Units.largeSpacing / 2
+        radius: height * 0.3
+        color: FishUI.Theme.highlightColor
+        opacity: 0.16
+        border.color: FishUI.Theme.highlightColor
+        border.width: 2 / FishUI.Units.devicePixelRatio
+        visible: model.dropSlot === true
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 150
+            }
+        }
+    }
 
     onXChanged: {
         if (windowCount > 0)

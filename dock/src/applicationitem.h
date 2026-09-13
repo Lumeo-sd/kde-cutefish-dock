@@ -40,6 +40,9 @@ public:
     bool isActive = false;
     bool isPinned = false;
     bool fixed = false;
+    // Temporary insertion gap shown while an external drag hovers the dock.
+    // Never persisted: isPinned stays false so save() skips it.
+    bool dropSlot = false;
 
     bool operator==(ApplicationItem item) {
         return item.id == this->id;
