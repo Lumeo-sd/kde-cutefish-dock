@@ -27,6 +27,7 @@ DockItem {
 
     property var windowCount: model.windowCount
     property var dragSource: null
+    property string appId: model.appId
 
     iconName: model.dropSlot ? "" : (model.iconName ? model.iconName : "application-x-desktop")
     showIcon: !model.dropSlot
@@ -35,25 +36,6 @@ DockItem {
     enableActivateDot: !model.dropSlot && windowCount !== 0
     draggable: !model.fixed
     dragItemIndex: index
-
-    // Live insertion gap: a translucent highlight the size of an icon slot,
-    // shown while an external drag hovers the dock.
-    Rectangle {
-        anchors.fill: parent
-        anchors.margins: FishUI.Units.largeSpacing / 2
-        radius: height * 0.3
-        color: FishUI.Theme.highlightColor
-        opacity: 0.16
-        border.color: FishUI.Theme.highlightColor
-        border.width: 2 / FishUI.Units.devicePixelRatio
-        visible: model.dropSlot === true
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 150
-            }
-        }
-    }
 
     onXChanged: {
         if (windowCount > 0)
@@ -81,7 +63,15 @@ DockItem {
             appModel.openNewInstance(model.appId)
     }
 
+    // Drop-based reorder (the original mechanism): hovering an icon for 300 ms
+    // while dragging another one moves the dragged app there; the icons then
+    // slide via moveDisplaced. Only one model change per gesture, so there is
+    // no per-cell churn. External file drags (a .desktop from a launcher) are
+    // owned by the root DropArea / drop-slot flow and never reorder here.
     dropArea.onEntered: {
+        if (root.externalDragActive)
+            return
+
         appItem.dragSource = drag.source
         dropTimer.restart()
     }
@@ -92,6 +82,9 @@ DockItem {
     }
 
     dropArea.onDropped: {
+        if (root.externalDragActive)
+            return
+
         appModel.save()
         updateGeometry()
     }
@@ -100,7 +93,12 @@ DockItem {
         id: dropTimer
         interval: 300
         onTriggered: {
-            if (appItem.dragSource)
+            if (root.externalDragActive)
+                return
+
+            if (appItem.dragSource
+                    && appItem.dragSource.dragItemIndex !== undefined
+                    && appItem.dragSource.dragItemIndex >= 0)
                 appModel.move(appItem.dragSource.dragItemIndex,
                               appItem.dragItemIndex)
             else

@@ -43,8 +43,9 @@ Item {
     // Set to false to hide the icon (e.g. the drop-slot placeholder row).
     property bool showIcon: true
 
-    // Whether the icon's drop area accepts drops. Disabled entirely during an
-    // external drag so the root DropArea follows the cursor for the gap.
+    // Whether this row's drop area accepts drops. During an external file drag
+    // (a .desktop from a launcher) the root DropArea owns the gesture, so the
+    // per-icon drop areas are disabled for its duration.
     property bool dropAreaEnabled: draggable
     readonly property bool externalDragActive: root.externalDragActive
 
@@ -56,10 +57,15 @@ Item {
     property double iconSizeRatio: 0.8
     property var iconName
 
+    // True while this row is the source of an active drag: the icon and the
+    // activation dot hide and Qt's drag system shows the grabbed icon image as
+    // the drag pixmap instead. On Wayland the compositor renders that pixmap,
+    // so it follows the cursor everywhere — no full-screen band or QML ghost
+    // is needed for the icon to stay visible outside the dock.
     property bool dragStarted: false
 
     signal positionChanged()
-    signal released()
+    signal released(var mouse)
     signal pressed(var mouse)
     signal pressAndHold(var mouse)
     signal clicked(var mouse)
@@ -67,18 +73,24 @@ Item {
     signal doubleClicked(var mouse)
     signal dropped(var drop)
 
+    // The drag is the standard Qt Quick drag exactly like the original
+    // CutefishOS dock: Drag.Automatic + the icon's grabbed image. Reorders
+    // happen on drop (AppItem's drop areas), so the model changes once per
+    // gesture and the row widths never animate — no reflow artifacts.
     Drag.active: mouseArea.drag.active && control.draggable
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.MoveAction
     Drag.hotSpot.x: icon.width / 2
     Drag.hotSpot.y: icon.height / 2
 
-    Drag.onDragStarted:  {
-        dragStarted = true
+    Drag.onDragStarted: {
+        control.dragStarted = true
+        popupTips.hide()
     }
 
     Drag.onDragFinished: {
-        dragStarted = false
+        control.dragStarted = false
+        popupTips.hide()
     }
 
     FishUI.IconItem {
@@ -88,7 +100,7 @@ Item {
         height: control.iconSize
         source: iconName
 
-        visible: showIcon && !dragStarted
+        visible: showIcon && !control.dragStarted
 
         ColorOverlay {
             id: iconColorize
@@ -140,10 +152,11 @@ Item {
             control.positionChanged()
         }
 
-        onPressAndHold : control.pressAndHold(mouse)
+        onPressAndHold: control.pressAndHold(mouse)
+
         onReleased: {
             drag.target = null
-            control.released()
+            control.released(mouse)
         }
 
         onContainsMouseChanged: {
@@ -185,7 +198,7 @@ Item {
         width: !isBottom ? circleSize : (isActive ? activeLength : circleSize)
         height: !isBottom ? (isActive ? activeLength : circleSize) : circleSize
         radius: !isBottom ? width / 2 : height / 2
-        visible: enableActivateDot && !dragStarted
+        visible: enableActivateDot && !control.dragStarted
         color: FishUI.Theme.textColor
 
         x: isLeft ? leftX : isBottom ? bottomX : rightX

@@ -21,7 +21,12 @@
 #include "processprovider.h"
 #include "utils.h"
 
+#include <QDir>
+#include <QIcon>
 #include <QProcess>
+#include <QPixmap>
+#include <QRegularExpression>
+#include <QUrl>
 
 ApplicationModel::ApplicationModel(QObject *parent)
     : QAbstractListModel(parent)
@@ -33,6 +38,8 @@ ApplicationModel::ApplicationModel(QObject *parent)
     connect(m_iface, &XWindowInterface::activeChanged, this, &ApplicationModel::onActiveChanged);
 
     initPinnedApplications();
+
+    qInfo() << "cutefish-dock debug build ready, rowCount=" << rowCount() << "debug-fork-3";
 
     QTimer::singleShot(100, m_iface, &XWindowInterface::startInitWindows);
 }
@@ -161,9 +168,14 @@ void ApplicationModel::insertItem(const QString &desktopFile, int index)
 
         moveItem(item, index);
 
+        // The slot row became a real pinned app; refresh the delegate so the
+        // icon/name appear immediately (dropSlot=false, fixed=false, ...).
+        handleDataChangedFromItem(item);
+
         savePinAndUnPinList();
         emit itemAdded();
         emit countChanged();
+        qInfo() << "slot insert" << desktopFile << "at" << index;
         return;
     }
 
@@ -209,6 +221,7 @@ void ApplicationModel::beginDropSlot(int index)
     item->fixed = true;
     m_appItems.insert(index, item);
     endInsertRows();
+    qInfo() << "slot begin" << index;
 }
 
 void ApplicationModel::moveDropSlot(int index)
@@ -221,19 +234,22 @@ void ApplicationModel::moveDropSlot(int index)
     index = qBound(1, index, rowCount() - 1);
 
     moveItem(m_appItems.at(from), index);
+    qInfo() << "slot move" << from << "->" << index;
 }
 
-void ApplicationModel::endDropSlot()
+bool ApplicationModel::endDropSlot()
 {
     int from = dropSlotIndex();
 
     if (from == -1)
-        return;
+        return false;
 
     beginRemoveRows(QModelIndex(), from, from);
     ApplicationItem *item = m_appItems.takeAt(from);
     endRemoveRows();
     delete item;
+    qInfo() << "slot end";
+    return true;
 }
 
 int ApplicationModel::dropSlotIndex() const
@@ -246,6 +262,148 @@ int ApplicationModel::dropSlotIndex() const
     return -1;
 }
 
+bool ApplicationModel::dropSlotActive() const
+{
+    return dropSlotIndex() != -1;
+}
+
+QString ApplicationModel::internalDragIconName()
+{
+    ApplicationItem *item = findItemById(m_dragItemId);
+
+    if (!item || item->dropSlot)
+        return QString();
+
+    return item->iconName;
+}
+
+// QML debug bridge — see header.
+void ApplicationModel::dbg(const QString &msg)
+{
+    qInfo().noquote() << "[qml]" << msg;
+}
+
+// Render the app's icon to a temp PNG and return its file URL for the drag
+// ghost. AppItem binds Drag.imageSource to this URL, so Qt's drag manager
+// starts loading the image at delegate creation — long before any press — and
+// by the time a drag actually starts the pixmap is ready, which is the only
+// way a Wayland ghost can show the icon on the very first drag. The size
+// matches the dock icon size (in device pixels) so the ghost is not enlarged.
+QString ApplicationModel::dragIconSource(const QString &appId, int size)
+{
+    ApplicationItem *item = findItemById(appId);
+
+    // Fixed anchors (launcher) are never dragged — skip the render entirely.
+    if (!item || item->iconName.isEmpty() || item->fixed || size <= 0)
+        return QString();
+
+    QPixmap pixmap;
+
+    if (item->iconName.startsWith(QLatin1String("qrc:"))) {
+        // Qt Quick's "qrc:" scheme maps to the resource system's ":/" prefix,
+        // which is what QPixmap understands.
+        const QString res = QStringLiteral(":/") + item->iconName.mid(4);
+        pixmap = QPixmap(res);
+
+        if (pixmap.isNull())
+            return QString();
+
+        pixmap = pixmap.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    } else if (item->iconName.startsWith(QLatin1Char('/'))) {
+        QIcon icon(item->iconName);
+
+        if (icon.isNull())
+            return QString();
+
+        pixmap = icon.pixmap(size, size);
+    } else {
+        QIcon icon = QIcon::fromTheme(item->iconName);
+
+        if (icon.isNull())
+            return QString();
+
+        pixmap = icon.pixmap(size, size);
+    }
+
+    if (pixmap.isNull())
+        return QString();
+
+    QString safeId = appId;
+    safeId.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]")), QStringLiteral("_"));
+
+    const QString path = QDir::tempPath()
+                         + QStringLiteral("/cutefish-dock-drag-") + safeId + QStringLiteral(".png");
+
+    if (pixmap.save(path, "PNG"))
+        return QUrl::fromLocalFile(path).toString();
+
+    return QString();
+}
+
+// --- Internal reorder (dragging an already-pinned icon) ---
+
+// Remember where an internal drag started. The dragged icon stays in the list
+// (its icon is hidden by the delegate), so the row it occupies is the live
+// gap; moveInternalGap() slides that empty row along the cursor. This gives
+// the same "icons slide apart, gap follows the pointer" feel as the external
+// drag & drop.
+void ApplicationModel::beginInternalDrag(const QString &id)
+{
+    m_dragItemId = id;
+    m_dragFrom = indexOf(id);
+    qInfo() << "internal begin" << id << "from" << m_dragFrom;
+}
+
+void ApplicationModel::moveInternalGap(int index)
+{
+    ApplicationItem *item = findItemById(m_dragItemId);
+
+    if (!item)
+        return;
+
+    int from = m_appItems.indexOf(item);
+
+    if (from == -1 || from == index)
+        return;
+
+    moveItem(item, qBound(1, index, rowCount() - 1));
+    qInfo() << "internal move" << index << "(from" << from << ") ->" << m_appItems.indexOf(item);
+}
+
+// The user dropped the icon on the dock: it already sits exactly where the gap
+// was (it followed the cursor), so persisting the new order is all that is
+// needed.
+void ApplicationModel::endInternalDrag()
+{
+    qInfo() << "internal end (save)" << m_dragItemId << "at" << indexOf(m_dragItemId);
+    m_dragItemId.clear();
+    m_dragFrom = -1;
+    savePinAndUnPinList();
+}
+
+// The drag left the dock (or was cancelled) without a drop: put the icon back
+// where it was picked up.
+void ApplicationModel::restoreInternalDrag()
+{
+    ApplicationItem *item = findItemById(m_dragItemId);
+    m_dragItemId.clear();
+
+    if (!item)
+        return;
+
+    int from = m_appItems.indexOf(item);
+
+    if (from == -1)
+        return;
+
+    int to = qBound(0, m_dragFrom, rowCount() - 1);
+    m_dragFrom = -1;
+
+    if (from != to)
+        moveItem(item, to);
+    qInfo() << "internal restore" << "from" << from << "to" << to;
+}
+
 void ApplicationModel::moveItem(ApplicationItem *item, int to)
 {
     int from = m_appItems.indexOf(item);
@@ -254,6 +412,8 @@ void ApplicationModel::moveItem(ApplicationItem *item, int to)
         return;
 
     to = qBound(0, to, rowCount() - 1);
+
+    qInfo() << "model move" << item->id << "from" << from << "to" << to;
 
     m_appItems.move(from, to);
 
@@ -335,6 +495,87 @@ void ApplicationModel::raiseWindow(const QString &id)
     m_iface->forceActiveWindow(item->wids.at(item->currentActive));
 }
 
+// The Exec value of a .desktop file carries desktop field codes (%U, %F, %i,
+// %c, %k, ...) and, for Flatpak apps, "@@ ... @@" file-forwarding groups. The
+// dock launches an app without any file arguments, so those codes must be
+// dropped: passing a literal "%U" makes e.g. Flatpak refuse to start. Parsed
+// shell-style (quotes/backslash escapes) like the desktop spec requires.
+static QStringList launchArguments(const QString &exec)
+{
+    QStringList args;
+    QString token;
+    bool inSingle = false;
+    bool inDouble = false;
+
+    for (int i = 0; i < exec.size(); ++i) {
+        const QChar c = exec.at(i);
+
+        if (inSingle) {
+            if (c == QLatin1Char('\''))
+                inSingle = false;
+            else
+                token += c;
+            continue;
+        }
+
+        if (inDouble) {
+            if (c == QLatin1Char('"'))
+                inDouble = false;
+            else if (c == QLatin1Char('\\') && i + 1 < exec.size())
+                token += exec.at(++i);
+            else
+                token += c;
+            continue;
+        }
+
+        if (c == QLatin1Char('\'')) {
+            inSingle = true;
+        } else if (c == QLatin1Char('"')) {
+            inDouble = true;
+        } else if (c.isSpace()) {
+            if (!token.isEmpty()) {
+                args << token;
+                token.clear();
+            }
+        } else if (c == QLatin1Char('\\') && i + 1 < exec.size()) {
+            token += exec.at(++i);
+        } else {
+            token += c;
+        }
+    }
+
+    if (!token.isEmpty())
+        args << token;
+
+    // Drop field codes and flatpak file-forwarding groups.
+    QStringList cleaned;
+    bool inForwardGroup = false;
+
+    for (const QString &arg : args) {
+        if (arg.startsWith(QStringLiteral("@@"))) {
+            inForwardGroup = true;
+            continue;
+        }
+        if (inForwardGroup) {
+            if (arg == QStringLiteral("@@"))
+                inForwardGroup = false;
+            continue;
+        }
+
+        const QString lower = arg.toLower();
+        if (lower == QStringLiteral("%u") || lower == QStringLiteral("%f")
+                || lower == QStringLiteral("%i") || lower == QStringLiteral("%c")
+                || lower == QStringLiteral("%k") || lower == QStringLiteral("%v")
+                || lower == QStringLiteral("%m"))
+            continue;
+
+        QString cleanedArg = arg;
+        cleaned << cleanedArg.replace(QStringLiteral("%%"), QStringLiteral("%"));
+    }
+
+    return cleaned;
+}
+
 bool ApplicationModel::openNewInstance(const QString &appId)
 {
     ApplicationItem *item = findItemById(appId);
@@ -343,15 +584,15 @@ bool ApplicationModel::openNewInstance(const QString &appId)
         return false;
 
     if (!item->exec.isEmpty()) {
-        QStringList args = item->exec.split(" ");
-        QString exec = args.first();
-        args.removeFirst();
+        const QStringList launchArgs = launchArguments(item->exec);
 
-        if (!args.isEmpty()) {
-            ProcessProvider::startDetached(exec, args);
-        } else {
-            ProcessProvider::startDetached(exec);
-        }
+        if (launchArgs.isEmpty())
+            return false;
+
+        if (launchArgs.size() > 1)
+            ProcessProvider::startDetached(launchArgs.first(), launchArgs.mid(1));
+        else
+            ProcessProvider::startDetached(launchArgs.first());
     } else {
         ProcessProvider::startDetached(appId);
     }
@@ -386,6 +627,7 @@ void ApplicationModel::pin(const QString &appId)
 
 void ApplicationModel::unPin(const QString &appId)
 {
+    qInfo() << "unpin" << appId;
     ApplicationItem *item = findItemById(appId);
 
     if (!item)
