@@ -323,21 +323,35 @@ void ApplicationModel::clicked(const QString &id)
     if (item->wids.isEmpty()) {
         // open application
         openNewInstance(item->id);
+        return;
     }
-    // Multiple windows have been opened and need to switch between them,
-    // The logic here needs to be improved.
-    else if (item->wids.count() > 1) {
+
+    const WId active = m_iface->activeWindow();
+
+    // The clicked window (or one of the app's windows) is already the active
+    // one: minimize it. This is checked BEFORE the multi-window cycle, else an
+    // app with a second window (a dialog, a Picture-in-Picture window, ...)
+    // could never be minimized from the dock — clicking would just rotate
+    // through its windows.
+    if (item->wids.contains(active)) {
+        m_iface->minimizeWindow(active);
+        return;
+    }
+
+    // Multiple windows have been opened and none of them is active: switch
+    // between them.
+    if (item->wids.count() > 1) {
         item->currentActive++;
 
         if (item->currentActive == item->wids.count())
             item->currentActive = 0;
 
         m_iface->forceActiveWindow(item->wids.at(item->currentActive));
-    } else if (m_iface->activeWindow() == item->wids.first()) {
-        m_iface->minimizeWindow(item->wids.first());
-    } else {
-        m_iface->forceActiveWindow(item->wids.first());
+        return;
     }
+
+    // Single window, not active: activate it.
+    m_iface->forceActiveWindow(item->wids.first());
 }
 
 void ApplicationModel::raiseWindow(const QString &id)
