@@ -61,9 +61,18 @@
   Під сесією немає керування курсором (нема ydotool/xdotool/wtype; KWin
   scripting курсором не керує). Тест: перетягнути додаток з kіckoff на dock;
   перевірити Pin/Unpin у контекстному меню для програних додатків.
-- Кнопка launcher (`cutefish-launcher`) нічого не відкриває — сам launcher не
-  встановлений (користувач використовує kickoff). Опційно: встановити
-  cutefish-launcher або перенацілити клік на kickoff.
+- ~~Кнопка launcher (`cutefish-launcher`) нічого не відкриває~~ → вирішено: launcher
+  портовано на Qt6/KF6 Wayland (гілка `fork-qt6-wayland`, `launcher/STEP2-LAUNCHER-WAYLAND.md`),
+  встановлено в `~/.local/bin/cutefish-launcher`, кнопка в dock запускає
+  `cutefish-launcher --show` (холодний spawn) і тоглить відкрито/закрито повторним
+  кліком; launcher відкривається максимізованим (top-panel + dock видимі).
+- ~~Свайп/колесо у launcher: «нічого не сталось» або «цикл по колу»~~ → вирішено
+  і **підтверджено юзером на живому девайсі**: строгий пейджер «одна сторінка за
+  жест» (z:10 wheel-MouseArea, `interactive:false` + `contentX=currentIndex*width`,
+  `highlightFollowsCurrentItem:false`, burst-guard 500 мс; деталі — знахідка 11
+  STEP2-LAUNCHER-WAYLAND.md). Тачпад: обидва напрямки плавно, рівно 1 сторінка за
+  свайп, межі тримаються. Колесо миші: кожне клацання (±120, нотч) гортає одразу,
+  без пауз burst-таймера; швидке крутіння = по сторінці за ноток.
 - Нема follow-up-запуску через `systemd --user` (зараз звичайний XDG-autostart).
 - Опційно: `OnlyShowIn` автозапуску або делей до підняття kwin (вже є
   `X-KDE-autostart-after=plasma-desktop.service`).
@@ -79,3 +88,8 @@
 | fishui | `8baaef3` | порт Qt6/Wayland (dock-компоненти) |
 | fishui | `dd96285` | INSTALL_RPATH на FishUI plugin |
 | framework | `bb744d1` | appearance fallback darkMode |
+| launcher | `ccc7865`, `790c593` | Wayland port: maximized до setSource + корінь QML до реального розміру |
+| launcher | `e4506b7`, `5ba7069`, `bc6d668` | живий процес, надійний toggle кнопки dock, docs |
+| launcher | `e15e033`, `17f3e7b` | контекстне меню (lazy Loader + onVisibleChanged + prepare) |
+| launcher | `4445bec` | «одна сторінка за жест»: пейджер `contentX=currentIndex*width`, `requestActivate()` у showWindow, docs STEP2 |
+| launcher | `e2cdc9a` | плавні обидва напрямки: `highlightFollowsCurrentItem:false`, zero-delta skip, dead-zone 90, нотч-байпас колеса миші |

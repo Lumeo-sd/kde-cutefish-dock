@@ -10,6 +10,7 @@
 | `dock/` | cutefishos/dock | сам dock (C++/QML) |
 | `fishui/` | cutefishos/fishui | QML-фреймворк (теми, вікна, popupтултипи) |
 | `cutefish-framework/` | cutefishos/libcutefish | бібліотека, тут постачає `appearance` (daemon + конфіг) |
+| `launcher/` | cutefishos/launcher | лаунчер застосунків (C++/QML), порт на Qt6/KF6 Wayland + свайп-фікс |
 
 Усі три на гілці `fork-qt6-wayland` (локально, НЕ запушено).
 
@@ -78,6 +79,23 @@ cp /tmp/opencode/build-fishui/cutefish-framework-appearance-build/*.so ~/.local/
   desktopPathFromMetadata` спершу матчить за Wayland appId (baseName,
   StartupWMClass, Icon), потім pid/cmdline — виправляє "не всі додатки можна
   припінити" (Pin-меню ховається, коли `desktopFile==""`).
+- 2026-09-13: **launcher-свайп = строгий пейджер.** Flickable-навігація upstream
+  (`SnapOneItem` + `scrollAnim`) на Wayland давала snap-back («нічого не сталось»)
+  або переліт у порожнечу з fallback `currentIndex=0` («цикл по колу»). Фікс в
+  `AllAppsView.qml`: `interactive:false`, `contentX = max(0,currentIndex)*width` +
+  `Behavior`, `StopAtBounds`, wheel перехоплює фронтовий `MouseArea{z:10,
+  acceptedButtons: Qt.NoButton}` з burst-guard (500 мс + restart) — рівно 1 сторінка
+  за жест, напрямок за домінантною віссю. `showWindow()`: `requestActivate()` —
+  інакше onActiveChanged ховав програмоно пока-заний launcher. Деталі:
+  `launcher/STEP2-LAUNCHER-WAYLAND.md`, знахідка 11.
+  <br>**Підтверджено юзером на живому тачпаді** (обидва напрямки плавно, 1 сторінка
+  за свайп, межі тримаються). Після підтвердження — ще 4 фікси (`e2cdc9a`):
+  `highlightFollowsCurrentItem:false` (ListView сам позиціонував контент при зміні
+  currentIndex → backward стрибав різко, forward плавно; тепер обидва плавно);
+  zero-дельта wheel-події (SmoothScroll transition, 0,0) ігноруються БЕЗ торкання
+  burst-таймера (раніше перша подія ковтала весь жест); dead-zone 90 (jitter тачпада
+  adx 20–61 гортав сторінки); механічне колесо: нотч ±120 (кратне 120) оминає
+  burst-таймер — швидке крутіння гортає по сторінці за клацання без паузи.
 - 2026-09-12: автостарт через `~/.config/autostart/`; rpath на FishUI QML
   (`$ORIGIN/../../..`).
 - Раніше: LayerShellQt (layer top, плаваюча центрована панель, exclusive zone)
@@ -102,4 +120,6 @@ cp /tmp/opencode/build-fishui/cutefish-framework-appearance-build/*.so ~/.local/
 
 - `PROGRESS.md` — журнал стану (змінюється щокроку)
 - Звіт кроку 2: `dock/STEP2-DOCK-WAYLAND.md`, аудит: `STEP0-AUDIT.md` (у dock/)
+- Звіт launcher: `launcher/STEP2-LAUNCHER-WAYLAND.md` (порт + свайп-фікс), аудит:
+  `launcher/STEP0-AUDIT.md`
 - `AGENTS.md` — імпортує цей файл (OpenCode читає AGENTS.md нативно)
