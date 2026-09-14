@@ -67,10 +67,11 @@ add_library(cutefishqmltermwidget MODULE
 )
 
 target_link_libraries(cutefishqmltermwidget
-    Qt5::Core
-    Qt5::Quick
-    Qt5::Gui
-    Qt5::Widgets
+    Qt6::Core
+    Qt6::Core5Compat
+    Qt6::Quick
+    Qt6::Gui
+    Qt6::Widgets
 )
 
 install(TARGETS cutefishqmltermwidget DESTINATION ${INSTALL_QMLDIR}/Cutefish/TermWidget)
