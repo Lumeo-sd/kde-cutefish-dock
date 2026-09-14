@@ -1,31 +1,39 @@
-# KDE Cutefish Dock
+# kde-cutefish-dock (monolith fork)
 
-> **CutefishOS dock ported to Qt6 / KDE Frameworks 6 for Plasma 6 Wayland**
->
-> The original CutefishOS look and animations are preserved; every X11-only
-> mechanism (NET WM struts, `KX11Extras`, XCB) has been replaced with
-> LayerShellQt and KWayland window tracking.  The result is a lightweight,
-> always-on-top dock that runs natively under any KWin-based Wayland session.
+> **The entire CutefishOS desktop shell, ported to Qt6 / KDE Frameworks 6 and
+> running natively under **Plasma 6 Wayland**.  Single branch (`main`),
+> one subfolder per component — no X11 (no KX11Extras, no XCB, no XWayland).
+> Many components now talk to the Wayland compositor (LayerShell, KWayland)
+> the way KWin's own plasma-shell components do.**
+
+One repo, five components, five git tags:
+
+| Component (subfolder) | Tag | What it is |
+|---|---|---|
+| `cutefish-framework` | `cutefish-framework-qt6-wayland-v1` | D-Bus + appearance (darkMode) service |
+| `dock` | `dock-qt6-wayland-v1` | Always-on-top dock (LayerShell, KWayland window track) |
+| `fishui` | `fishui-qt6-wayland-v1` | Qt Quick UI kit (FishUI 1.0 QML plugin) |
+| `launcher` | `launcher-qt6-wayland-v1` | Launcher (application grid) |
+| `statusbar` | `statusbar-qt6-wayland-v1` | Top status bar (wifi / bluetooth / layout / tray) |
+
+Why tags, not branches: a monorepo keeps one `main` as the single source of
+truth; a tag is a immutable snapshot of exactly one component's release,
+without forking five divergent branches you'd have to keep in sync.  To grab
+a single component from any commit:
+
+```bash
+git clone --depth 1 --branch <cutefish-framework|dock|fishui|launcher|statusbar>-qt6-wayland-v1 \
+    git@github.com:Lumeo-sd/kde-cutefish-dock.git <component>
+```
 
 ---
 
-## Features
+## Install each component separately — Fedora 42+ (tested)
 
-| Feature | How it works on Wayland |
-|---|---|
-| Always-visible dock with exclusive screen-edge reservation | LayerShellQt layer-top + exclusive zone |
-| Dark theme | `darkMode=true` via local fallback config (the CutefishOS daemon is optional) |
-| PWA support — pin any running app to the dock | `desktopPathFromMetadata` matches by Wayland appId first (independent of pid) |
-| Drag-and-drop from Kickoff / file manager | Drop `.desktop` files onto the dock to pin them |
-| Smooth show / hide (IntellHide mode) | Two-phase: QML opacity fade (200 ms) → geometry resize to ~2px strip (260 ms) |
-| Click-to-minimize / click-to-activate | KWayland `PlasmaWindow` `requestToggleMinimized` / `requestActivate` |
-| Autostart on login | XDG autostart desktop entry in `~/.config/autostart/` |
+All components install **privately** under `~/.local` (no root, no system
+packages beyond the build deps installed once).
 
----
-
-## Requirements
-
-### Fedora 42+ / RHEL-based (tested)
+### 0. Build dependencies (install once)
 
 ```bash
 sudo dnf install -y \
@@ -38,52 +46,24 @@ sudo dnf install -y \
     layer-shell-qt-devel
 ```
 
-### Debian 13 / Ubuntu 24.04+ (best-effort — not tested on these distros)
-
-```bash
-sudo apt install -y \
-    build-essential cmake ninja-build \
-    qt6-base-dev qt6-declarative-dev qt6-quickcontrols2-dev \
-    qt6-5compat-dev qt6-tools-dev qt6-tools-dev-tools \
-    extra-cmake-modules \
-    libkf6windowsystem-dev \
-    libkwayland-dev \
-    layer-shell-qt6-dev
-```
-
-> **Note:** Package names may differ between distributions.  If your distro
-> uses Qt 6.5+ and KDE Frameworks 6.x, the build should succeed with
-> equivalent packages.
-
----
-
-## Build & install (private prefix `~/.local`)
-
-The project is split into three components.  They must be built **in order**
-because `fishui` installs a QML plugin that `dock` loads at runtime, and the
-framework's appearance library is needed by both.
-
 ### 1. cutefish-framework
 
 ```bash
 cmake -S cutefish-framework -B build-framework \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX="$HOME/.local"
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build-framework -j$(nproc)
 cmake --install build-framework
 ```
 
-### 2. fishui
+### 2. fishui (Qt Quick UI kit)
 
 ```bash
 cmake -S fishui -B build-fishui \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_INSTALL_PREFIX="$HOME/.local"
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build-fishui -j$(nproc)
 cmake --install build-fishui
 
-# The fishui install does not copy the appearance shared library.
-# Copy it manually:
+# fishui's install step skips the appearance .so — copy it manually:
 cp build-fishui/cutefish-framework-appearance-build/libcutefish-framework-appearance.so \
    "$HOME/.local/lib64/"
 ```
@@ -92,140 +72,20 @@ cp build-fishui/cutefish-framework-appearance-build/libcutefish-framework-appear
 
 ```bash
 cmake -S dock -B build-dock \
-      -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_INSTALL_PREFIX="$HOME/.local"
+      -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX="$HOME/.local"
 cmake --build build-dock -j$(nproc)
-cp build-dock/cutefish-dock "$HOME/.local/bin/"
-```
+cmake --install build-dock
 
-### 4. Desktop file (KWin permission gate)
-
-KWin requires a desktop file that declares
-`X-KDE-Wayland-Interfaces=org_kde_plasma_window_management` before it sends
-window management events to the client.  The file lives in
-`dock/cutefish-dock.desktop` and must be installed system-wide or under
-`~/.local/share/applications/`:
-
-```bash
+# Wayland grant: KWin only sends window-management to apps that declare it.
 cp dock/cutefish-dock.desktop "$HOME/.local/share/applications/"
-```
+# Optional: pin to the dock from a file manager
+cp dock/cutefish-dock.desktop "$HOME/.local/share/applications/"  # (drag-drop target)
 
-### 5. Autostart (optional)
-
-```bash
-mkdir -p "$HOME/.config/autostart"
+# Autostart on login (replace $USER with your shell user)
 cat > "$HOME/.config/autostart/cutefish-dock.desktop" << 'EOF'
 [Desktop Entry]
 Type=Application
 Name=Cutefish Dock
-Exec=/home/$USER/.local/bin/cutefish-dock
+Exec=$HOME/.local/bin/cutefish-dock
 Terminal=false
-X-GNOME-Autostart-enabled=true
 X-KDE-autostart-after=plasma-desktop.service
-EOF
-```
-
-> Replace `$USER` with your actual username in the `Exec` path, or use the
-> absolute path directly.
-
----
-
-## Run
-
-```bash
-QT_FORCE_STDERR_LOGGING=1 "$HOME/.local/bin/cutefish-dock"
-```
-
-Stop the dock:
-
-```bash
-pkill -x cutefish-dock
-```
-
-> **Tip:** Set `LD_LIBRARY_PATH=$HOME/.local/lib64` only if the install prefix
-> is not `~/.local`.  The fishui QML plugin ships with an `RPATH` that
-> resolves the appearance library relative to itself, so the dock works
-> without `LD_LIBRARY_PATH` out of the box.
-
----
-
-## Configuration files
-
-All configuration lives under `~/.config/cutefishos/`.  You can edit them by
-hand and restart the dock to apply.
-
-| File | Purpose | Key settings |
-|---|---|---|
-| `dock.conf` | Dock appearance and behaviour | `Direction` (0=Bottom, 1=Left, 2=Right), `IconSize`, `Style` (0=Round, 1=Rectangular), `Visibility` (0=AlwaysShow, 1=AlwaysHide, 2=IntellHide) |
-| `dock_pinned.conf` | Pinned application list | Groups keyed by app id, each with `DesktopPath`, `Exec`, `Icon`, `Index`, `VisibleName` |
-| `appearance.conf` | Appearance override when the CutefishOS daemon is not running | `[General] darkMode=true` (or `false` for light panel) |
-
-### D-Bus control
-
-```bash
-# Set visibility
-busctl --user call com.cutefish.Dock /Dock com.cutefish.Dock setVisibility i 0
-
-# Read back
-busctl --user get-property com.cutefish.Dock /Dock com.cutefish.Dock visibility
-
-# Geometry
-busctl --user get-property com.cutefish.Dock /Dock com.cutefish.Dock primaryGeometry
-```
-
----
-
-## What changed vs. upstream CutefishOS
-
-| Area | Upstream (Qt5 / X11) | This port (Qt6 / Wayland) |
-|---|---|---|
-| Panel geometry | `NET::Dock` + extended struts | LayerShellQt layer-top with exclusive zone |
-| Window tracking | `KX11Extras` poll of the X root window | KWayland `org_kde_plasma_window_management` |
-| Panel surface lifetime | Unmap/remap on show/hide | Permanent mapping: fade + strip resize |
-| Keyboard focus | `KeyboardInteractivityOnDemand` | `KeyboardInteractivityNone` (pointer events only) |
-| Fade animation | None (geometry snap) | QML opacity transition (200 ms) |
-| Desktop file scan | `/usr/share/applications` only | Full XDG path (user, system, flatpak) with priority dedup |
-| Desktop file match | `commandFromPid` (X11 WM_CLASS) | Wayland appId first (baseName / StartupWMClass / Icon), then pid fallback |
-| Desktop file search | Only `KF6WindowSystem::slideWindow` and `enableBlurBehind` | Removed; slide ineffective with map-forever strip, blur via QML `org_kde_kwin_blur` |
-| Build dependencies | `KF6WindowSystem`, `PkgConfig::XCB`, `compat/QX11Info` | `Plasma::KWaylandClient`, `LayerShellQt::Interface` only |
-
----
-
-## Uninstall
-
-```bash
-# Stop the dock
-pkill -x cutefish-dock
-
-# Remove installed files
-rm -f  "$HOME/.local/bin/cutefish-dock"
-rm -f  "$HOME/.local/share/applications/cutefish-dock.desktop"
-rm -rf "$HOME/.local/lib64/qt6/qml/FishUI"
-rm -f  "$HOME/.local/lib64/libcutefish-framework-appearance.so"
-rm -f  "$HOME/.config/autostart/cutefish-dock.desktop"
-
-# Optionally remove config
-rm -rf "$HOME/.config/cutefishos"
-```
-
----
-
-## License
-
-This project is released under the **GNU General Public License v3.0**
-(see [LICENSE](LICENSE)).
-
-### Upstream attribution
-
-The original code is from [CutefishOS](https://github.com/cutefishos/dock)
-(repos archived August 2026).  The CutefishOS Team retains copyright over
-the original source files; all such files carry the GPL-3.0 header and the
-original author line (`rekols <revenmartin@gmail.com>`, `Reion Wong
-<reionwong@gmail.com>`).
-
-### Links
-
-- KWin layer-shell: <https://wayland.app/protocols/wlr-layer-shell-unstable-v1>
-- KDE slide protocol: `org_kde_kwin_slide` (kf6-kwindowsystem)
-- KWayland: <https://invent.kde.org/frameworks/kwayland>
-- LayerShellQt: <https://invent.kde.org/plasma/layer-shell-qt>
