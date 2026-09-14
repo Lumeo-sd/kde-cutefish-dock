@@ -128,7 +128,7 @@ Session::Session(QObject* parent) :
 
 WId Session::windowId() const
 {
-    // On Qt5, requesting window IDs breaks QQuickWidget and the likes,
+    // On Qt6, requesting window IDs breaks QQuickWidget and the likes,
     // for example, see the following bug reports:
     // https://bugreports.qt.io/browse/QTBUG-40765
     // https://codereview.qt-project.org/#/c/94880/
