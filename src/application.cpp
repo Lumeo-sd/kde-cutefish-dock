@@ -4,6 +4,8 @@
 #include <QTranslator>
 #include <QLocale>
 #include <QIcon>
+#include <QStandardPaths>
+#include <QFile>
 
 #include "settingsuiadaptor.h"
 #include "fontsmodel.h"
@@ -92,18 +94,36 @@ Application::Application(int &argc, char **argv)
     qmlRegisterAnonymousType<QAbstractItemModel>(uri, 1);
 #endif
 
-    // Translations
+    // Translations: look in every XDG data directory (private ~/.local
+    // install keeps them under ~/.local/share/cutefish-settings/translations).
+    // Terminal pattern (QStandardPaths::locateAll); upstream hardcoded
+    // /usr/share/cutefish-settings/translations/.
     QLocale locale;
-    QString qmFilePath = QString("%1/%2.qm").arg("/usr/share/cutefish-settings/translations/").arg(locale.name());
-    if (QFile::exists(qmFilePath)) {
+    const QString localeFile = QStringLiteral("%1.qm").arg(locale.name());
+    const QStringList translationDirs = QStandardPaths::locateAll(
+        QStandardPaths::GenericDataLocation,
+        QStringLiteral("cutefish-settings/translations"),
+        QStandardPaths::LocateDirectory);
+
+    for (const QString &dir : translationDirs) {
+        const QString qmFilePath = dir + QLatin1Char('/') + localeFile;
+        if (!QFile::exists(qmFilePath))
+            continue;
+
         QTranslator *translator = new QTranslator(QApplication::instance());
         if (translator->load(qmFilePath)) {
             QApplication::installTranslator(translator);
         } else {
             translator->deleteLater();
         }
+        break;
     }
 
+    // Private-prefix install: FishUI and Cutefish.* framework modules live
+    // under <prefix>/lib64/qt6/qml (Qt6 ignores QT_QML_IMPORT_PATH at runtime).
+    // Terminal pattern.
+    m_engine.addImportPath(QCoreApplication::applicationDirPath()
+                           + QStringLiteral("/../lib64/qt6/qml"));
     m_engine.addImportPath(QStringLiteral("qrc:/"));
     m_engine.load(QUrl(QStringLiteral("qrc:/qml/main.qml")));
 
