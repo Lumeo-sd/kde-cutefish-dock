@@ -90,12 +90,12 @@ Transparency=false
 
 [Foreground]
 Bold=false
-Color=24,240,24
+Color=255,255,255
 Transparency=false
 
 [ForegroundIntense]
 Bold=true
-Color=24,240,24
+Color=255,255,255
 Transparency=false
 
 [General]

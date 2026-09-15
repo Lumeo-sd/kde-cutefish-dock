@@ -70,8 +70,8 @@ Session *KSession::createSession(QString name)
 
     //cool-old-term: There is another check in the code. Not sure if useful.
 
-    QString envshell = getenv("SHELL");
-    QString shellProg = envshell != NULL ? envshell : "/bin/bash";
+    const char *shellEnv = getenv("SHELL");
+    QString shellProg = shellEnv ? QString::fromLocal8Bit(shellEnv) : QStringLiteral("/bin/bash");
     session->setProgram(shellProg);
 
     setenv("TERM", "xterm-256color", 1);
@@ -300,14 +300,31 @@ QString KSession::keyBindings()
 
 QString KSession::getTitle()
 {
-    if (m_session->currentDir() == QDir::homePath()) {
-        return m_session->currentDir();
+    const QString dir = m_session->currentDir();
+    if (!dir.isEmpty()) {
+        if (dir == QDir::homePath() || dir == QLatin1String("/"))
+            return dir;
+
+        // QDir("").dirName() is "." — never show the empty-dir dot.
+        const QString base = QDir(dir).dirName();
+        if (!base.isEmpty() && base != QLatin1String("."))
+            return base;
     }
 
-    if (m_session->currentDir() == "/")
-        return m_session->currentDir();
+    // Foreground info not ready yet (e.g. right after startup): fall back to
+    // the tab's opening directory, unless it is an unexpanded shell variable.
+    const QString initial = getInitialWorkingDirectory();
+    if (!initial.isEmpty() && initial != QLatin1String("$PWD") && initial != QLatin1String("$HOME")) {
+        const QString base = QDir(initial).dirName();
+        if (!base.isEmpty() && base != QLatin1String("."))
+            return base;
+    }
 
-    return QDir(m_session->currentDir()).dirName();
+    const QString fg = foregroundProcessName();
+    if (!fg.isEmpty())
+        return fg;
+
+    return tr("Terminal");
 
     // return m_session->userTitle();
 }

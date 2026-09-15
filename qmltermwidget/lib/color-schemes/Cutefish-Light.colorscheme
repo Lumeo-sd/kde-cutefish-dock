@@ -80,14 +80,14 @@ Color=255,255,255
 Color=142,142,142
 
 [Foreground]
-Color=0,0,0
+Color=255,255,255
 
 [ForegroundIntense]
 Bold=true
-Color=0,0,0
+Color=255,255,255
 
 [ForegroundFaint]
-Color=0,0,0
+Color=200,200,200
 
 [General]
 Description=Black on White
