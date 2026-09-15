@@ -13,16 +13,22 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(QT Core Gui Quick QuickControls2 Widgets DBus LinguistTools Core5Compat)
 find_package(Qt6 6.5 REQUIRED ${QT})
 
-# Get the installation directory from qmake
-get_target_property(QT_QMAKE_EXECUTABLE ${Qt6Core_QMAKE_EXECUTABLE} IMPORTED_LOCATION)
-if(NOT QT_QMAKE_EXECUTABLE)
-    message(FATAL_ERROR "qmake is not found.")
+include(GNUInstallDirs)
+
+# Get the QML installation directory from qtpaths (Qt6), overridable so a
+# private-prefix install can target ~/.local/lib64/qt6/qml.
+find_program(QT_PATHS_EXECUTABLE qtpaths6)
+if(NOT QT_PATHS_EXECUTABLE)
+    message(FATAL_ERROR "qtpaths is not found.")
 endif()
 
-execute_process(COMMAND ${QT_QMAKE_EXECUTABLE} -query QT_INSTALL_QML
-    OUTPUT_VARIABLE INSTALL_QMLDIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+if(NOT INSTALL_QMLDIR)
+    execute_process(COMMAND ${QT_PATHS_EXECUTABLE} -query QT_INSTALL_QML
+        OUTPUT_VARIABLE INSTALL_QMLDIR
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+endif()
+set(INSTALL_QMLDIR "${INSTALL_QMLDIR}" CACHE PATH "QML import installation directory")
 if(INSTALL_QMLDIR)
     message(STATUS "qml directory:" "${INSTALL_QMLDIR}")
 else()
@@ -52,15 +58,15 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 file(GLOB TS_FILES translations/*.ts)
-qt6_create_translation(QM_FILES ${TS_FILES})
+qt6_add_translation(QM_FILES ${TS_FILES})
 add_custom_target(translations DEPENDS ${QM_FILES} SOURCES ${TS_FILES})
 add_dependencies(${PROJECT_NAME} translations)
-install(FILES ${QM_FILES} DESTINATION /usr/share/cutefish-terminal/translations)
+install(FILES ${QM_FILES} DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/translations)
 
-install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION /usr/bin)
+install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(FILES
     cutefish-terminal.desktop
-    DESTINATION /usr/share/applications/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications/
     COMPONENT Runtime
 )
