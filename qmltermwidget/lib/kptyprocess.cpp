@@ -44,6 +44,12 @@ KPtyProcess::KPtyProcess(QObject *parent) :
 
     d->pty = new KPtyDevice(this);
     d->pty->open();
+
+    // Qt6: PTY child setup is registered via setChildProcessModifier() so that
+    // it runs inside the child process. QProcess::setupChildProcess() is a
+    // private sentinel in Qt6 and cannot be overridden.
+    setChildProcessModifier([this] { setupPtyChildProcess(); });
+
     connect(this, SIGNAL(stateChanged(QProcess::ProcessState)),
             SLOT(_k_onStateChanged(QProcess::ProcessState)));
 }
@@ -119,7 +125,7 @@ KPtyDevice *KPtyProcess::pty() const
     return d->pty;
 }
 
-void KPtyProcess::setupChildProcess()
+void KPtyProcess::setupPtyChildProcess()
 {
     Q_D(KPtyProcess);
 
@@ -138,7 +144,8 @@ void KPtyProcess::setupChildProcess()
     if (d->ptyChannels & StderrChannel)
         dup2(d->pty->slaveFd(), 2);
 
-    KProcess::setupChildProcess();
+    // Qt6: QProcess::setupChildProcess() is a private sentinel type; the
+    // PTY child setup is registered via setChildProcessModifier() in the ctor.
 }
 
 //#include "kptyprocess.moc"

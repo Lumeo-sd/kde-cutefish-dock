@@ -22,6 +22,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QMap>
+#include <QRegExp>   // Qt6: Core5Compat QRegExp (Qt6LinguistTools lupdate-shim)
 
 #include <Session.h>
 #include <ScreenWindow.h>

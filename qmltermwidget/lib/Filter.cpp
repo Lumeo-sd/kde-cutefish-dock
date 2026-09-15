@@ -35,6 +35,7 @@
 #include <QFile>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QWidget>
 
 // KDE
 //#include <KLocale>
@@ -517,7 +518,7 @@ FilterObject* UrlFilter::HotSpot::getUrlObject() const
 class UrlAction : public QAction {
 public:
     UrlAction(QWidget* parent, std::shared_ptr<UrlFilter::HotSpot> hotspotPtr)
-        : QAction(parent)
+        : QAction(static_cast<QObject*>(parent))
         , _hotspotPtr(hotspotPtr)
     {
     }

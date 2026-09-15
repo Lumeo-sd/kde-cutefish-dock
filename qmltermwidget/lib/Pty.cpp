@@ -270,6 +270,12 @@ void Pty::init()
 
   connect(pty(), SIGNAL(readyRead()) , this , SLOT(dataReceived()));
   setPtyChannels(KPtyProcess::AllChannels);
+
+  // Qt6: PTY child setup is registered via setChildProcessModifier().
+  // Pty::setupPtyChildProcess() chains to KPtyProcess::setupPtyChildProcess(),
+  // which was itself registered in the KPtyProcess ctor; registering here
+  // (in the most-derived ctor) ensures the full Pty chain runs in the child.
+  setChildProcessModifier([this] { setupPtyChildProcess(); });
 }
 
 Pty::~Pty()
@@ -317,9 +323,9 @@ int Pty::foregroundProcessGroup() const
     return 0;
 }
 
-void Pty::setupChildProcess()
+void Pty::setupPtyChildProcess()
 {
-    KPtyProcess::setupChildProcess();
+    KPtyProcess::setupPtyChildProcess();
 
     // reset all signal handlers
     // this ensures that terminal applications respond to

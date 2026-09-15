@@ -660,7 +660,7 @@ protected:
     //     - A space (returns ' ')
     //     - Part of a word (returns 'a')
     //     - Other characters (returns the input character)
-    QChar charClass(QChar ch) const;
+    QChar charClass(wchar_t ch) const;
 
     void clearImage();
 
@@ -671,7 +671,7 @@ protected:
 
     // QMLTermWidget
     void paint(QPainter  *painter);
-    void geometryChanged(const QRectF & newGeometry, const QRectF & oldGeometry);
+    void geometryChange(const QRectF & newGeometry, const QRectF & oldGeometry) override;
     void inputMethodQuery(QInputMethodQueryEvent *event);
     void itemChange(ItemChange change, const ItemChangeData & value);
 

@@ -33,6 +33,7 @@
 #include <QTextStream>
 #include <QKeySequence>
 #include <QDir>
+#include <QRegExp>
 #include <QtDebug>
 
 #include "tools.h"
@@ -683,7 +684,7 @@ QByteArray KeyboardTranslator::Entry::unescape(const QByteArray& input) const
     for ( int i = 0 ; i < result.count()-1 ; i++ )
     {
 
-        QByteRef ch = result[i];
+        char ch = result[i];
         if ( ch == '\\' )
         {
            char replacement[2] = {0,0};

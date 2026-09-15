@@ -106,13 +106,13 @@ bool HistorySearch::search(int startColumn, int startLine, int endColumn, int en
         int matchStart;
         if (m_forwards)
         {
-            matchStart = string.indexOf(m_regExp, startColumn);
+            matchStart = m_regExp.indexIn(string, startColumn);
             if (matchStart >= endPosition)
                 matchStart = -1;
         }
         else
         {
-            matchStart = string.lastIndexOf(m_regExp, endPosition - 1);
+            matchStart = m_regExp.lastIndexIn(string, endPosition - 1);
             if (matchStart < startColumn)
                 matchStart = -1;
         }

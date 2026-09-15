@@ -142,9 +142,11 @@ public:
 
 protected:
     /**
-     * @reimp
+     * Sets up the PTY side of the child process after it has forked.
+     * Not an override: registered with setChildProcessModifier() in the
+     * constructor (Qt6 replaced the QProcess::setupChildProcess() hook).
      */
-    virtual void setupChildProcess();
+    void setupPtyChildProcess();
 
 private:
     Q_PRIVATE_SLOT(d_func(), void _k_onStateChanged(QProcess::ProcessState))
